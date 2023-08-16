@@ -1,0 +1,121 @@
+plugins {
+    id 'org.springframework.boot' version '2.7.4'
+    id 'io.spring.dependency-management' version '1.1.0'
+    id 'java'
+    id "io.qameta.allure" version "2.11.2"
+}
+
+group = build_group
+version = build_version
+
+allure {
+    def allureVersion = "2.22.2"
+    version = allureVersion
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'io.spring.dependency-management'
+    apply plugin: 'org.springframework.boot'
+    apply plugin: 'io.qameta.allure'
+
+    group = build_group
+    version = build_version
+
+    compileJava {options.encoding = "UTF-8"}
+    java.sourceCompatibility = JavaVersion.VERSION_11
+    java.targetCompatibility = JavaVersion.VERSION_11
+
+    repositories {
+
+        // Highest order
+        mavenLocal()
+        mavenCentral()
+
+        // To use the CodeArtifact repository as the only source for your project dependencies (fetch dependencies),
+        // add below maven section and remove any other sections in repositories i.e. mavenCentral(), mavenLocal()
+        maven {
+
+            if (project.getProperties().containsKey("ARTIFACTORY_URL"))
+                url project.property("ARTIFACTORY_URL").toString()
+            else
+                url artifactory_build_url
+            credentials {
+                if (project.getProperties().containsKey("ARTIFACTORY_USER_ACCOUNT"))
+                    username project.property("ARTIFACTORY_USER_ACCOUNT").toString()
+                else
+                    username System.env.CODEARTIFACT_USER
+                if (project.getProperties().containsKey("CODEARTIFACT_AUTH_TOKEN"))
+                    password project.property("CODEARTIFACT_AUTH_TOKEN").toString()
+                else
+                    password System.env.CODEARTIFACT_AUTH_TOKEN
+            }
+        }
+    }
+
+    configurations.all {
+        exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+        exclude group: 'org.codehaus.groovy', module: 'groovy-xml'
+    }
+
+    ext {
+        seleniumVersion = "4.11.0"
+        apachePoiVersion = "5.2.3"
+        testNgVersion = "7.8.0"
+        restAssuredVersion = "5.3.1"
+        extentReportsVersion = "5.0.9"
+        allureRestAssured = "2.22.2"
+        webDriverManagerVersion = "5.4.1"
+        httpClient5Version = "5.2.1"
+        orgJsonVersion = "20230227"
+        jSoupVersion = "1.15.1"
+        apacheCommonsTextVersion = "1.10.0"
+        apacheCommonIoVersion = "2.13.0"
+        jacksonDataBindVersion = "2.13.2.1"
+        jsonSimpleVersion = "1.1.1"
+        sprintTestVersion = "5.3.20"
+        fakerVersion = "1.0.2"
+        jsonPathVersion = "2.8.0"
+        jsonSmartVersion = "2.4.9"
+        awaitilityVersion = "4.2.0"
+        spockSpringVersion = "2.4-M1-groovy-4.0"
+        openCsvVersion = "5.7.1"
+    }
+
+    dependencies {
+        implementation "org.testng:testng:$testNgVersion"
+        implementation "io.rest-assured:rest-assured:$restAssuredVersion"
+        implementation "io.qameta.allure:allure-rest-assured:$allureRestAssured"
+        implementation "io.rest-assured:json-schema-validator:$restAssuredVersion"
+        implementation "com.fasterxml.jackson.core:jackson-databind:$jacksonDataBindVersion"
+        implementation "org.seleniumhq.selenium:selenium-java:$seleniumVersion"
+        implementation "com.googlecode.json-simple:json-simple:$jsonSimpleVersion"
+        implementation "com.aventstack:extentreports:$extentReportsVersion"
+        implementation "org.apache.poi:poi:$apachePoiVersion"
+        implementation "org.apache.poi:poi-ooxml:$apachePoiVersion"
+        implementation "io.github.bonigarcia:webdrivermanager:$webDriverManagerVersion"
+        implementation "org.apache.httpcomponents.client5:httpclient5:$httpClient5Version"
+        implementation "com.jayway.jsonpath:json-path:$jsonPathVersion"
+        implementation "net.minidev:json-smart:$jsonSmartVersion"
+        implementation "org.json:json:$orgJsonVersion"
+        implementation "org.jsoup:jsoup:$jSoupVersion"
+        implementation "org.apache.commons:commons-text:$apacheCommonsTextVersion"
+        implementation "commons-io:commons-io:$apacheCommonIoVersion"
+        implementation("com.github.javafaker:javafaker:$fakerVersion") { exclude module: 'snakeyaml' }
+        implementation "org.springframework:spring-test:$sprintTestVersion"
+        implementation "org.springframework.boot:spring-boot-starter"
+        implementation "org.springframework.boot:spring-boot-starter-test"
+        implementation "com.opencsv:opencsv:$openCsvVersion"
+        testImplementation "org.spockframework:spock-spring:$spockSpringVersion"
+        implementation "org.awaitility:awaitility:$awaitilityVersion"
+    }
+}
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+    from project(":Core").sourceSets.main.output
+}

@@ -1,0 +1,85 @@
+plugins {
+    id 'maven-publish'
+    id 'org.springframework.boot' version '2.7.4'
+    id 'io.spring.dependency-management' version '1.1.0'
+    id 'java'
+    id "io.qameta.allure" version "2.11.2"
+}
+
+allure {
+    def allureVersion = "2.22.2"
+    version = allureVersion
+}
+
+group = build_group
+version = build_version
+
+configurations.all {
+    exclude group: 'org.springframework.boot', module: 'spring-boot-starter-logging'
+    exclude group: 'org.codehaus.groovy', module: 'groovy-xml'
+}
+
+dependencies {
+    implementation "io.rest-assured:rest-assured"
+    implementation 'io.qameta.allure:allure-rest-assured'
+    implementation "io.rest-assured:json-schema-validator"
+    implementation "org.seleniumhq.selenium:selenium-java"
+    implementation "com.googlecode.json-simple:json-simple"
+    implementation "com.aventstack:extentreports"
+    implementation "org.apache.poi:poi"
+    implementation "org.apache.poi:poi-ooxml"
+    implementation "io.github.bonigarcia:webdrivermanager"
+    implementation 'org.apache.httpcomponents.client5:httpclient5'
+    implementation "com.jayway.jsonpath:json-path"
+    implementation "org.json:json"
+    implementation "org.testng:testng"
+    implementation "org.jsoup:jsoup"
+    implementation 'org.apache.commons:commons-text'
+    implementation('com.github.javafaker:javafaker') { exclude module: 'snakeyaml' }
+    implementation 'org.springframework:spring-test'
+    implementation 'org.springframework.boot:spring-boot-starter'
+    implementation 'org.springframework.boot:spring-boot-starter-test'
+    implementation 'com.opencsv:opencsv'
+    testImplementation 'org.spockframework:spock-spring'
+    testImplementation project(path: ':Core')
+    implementation 'org.awaitility:awaitility:4.2.0'
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            versionMapping {
+                usage('java-api') {
+                    fromResolutionOf('runtimeClasspath')
+                }
+
+                usage('java-runtime') {
+                    fromResolutionResult()
+                }
+            }
+        }
+    }
+
+    repositories {
+        maven {
+            url artifactory_publish_url
+            credentials {
+                username System.env.CODEARTIFACT_USER
+                password System.env.CODEARTIFACT_AUTH_TOKEN
+            }
+        }
+    }
+}
+
+bootJar {
+    enabled = false
+}
+
+jar {
+    enabled = true
+}
+
+test {
+    useTestNG()
+}
