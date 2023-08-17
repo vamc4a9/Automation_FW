@@ -11,14 +11,13 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
+import java.io.FileOutputStream;
 import java.util.*;
-import java.util.function.Predicate;
 
 @Component
 @Lazy
 @Scope("prototype")
-public class ExcelParser extends BaseDataParser<ExcelParser> implements DataParser {
+public class ExcelParser extends BaseDataParserImpl<ExcelParser> implements DataParser {
     public List<String> sHeaders = new ArrayList<>();
     private final DataProcessor dp;
     private final RunConfiguration config;
@@ -59,9 +58,9 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
      */
     public synchronized ExcelParser getInstance(String sWBPath, String sWSSheet) {
         try {
-            if (DataParsers().containsKey(sWBPath + sWSSheet)) {
+            if (BaseDataParser.DataParsers().containsKey(sWBPath + sWSSheet)) {
                 // Returning the Excel instance object if it was already created
-                return (ExcelParser) DataParsers().get(sWBPath + sWSSheet);
+                return (ExcelParser) BaseDataParser.DataParsers().get(sWBPath + sWSSheet);
             } else {
                 // Creating a new instance of Excel object
                 ExcelParser oExcel = getNewInstance();
@@ -93,7 +92,7 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
 
                 // Creating a formula evaluator
                 oExcel.evaluator = oExcel.xBook.getCreationHelper().createFormulaEvaluator();
-                storeDataParser(sWBPath + sWSSheet, oExcel);
+                BaseDataParser.storeDataParser(sWBPath + sWSSheet, oExcel);
                 return oExcel;
             }
         } catch (Exception e) {
@@ -122,27 +121,6 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
         return (book.getSheet(sheet + "_" + env) == null) ? sheet : sheet + "_" + env;
     }
 
-    public Map<String, String> get_as_headers(String columnName, String key) {
-        LinkedHashMap<String, String> keys = read(columnName, key + "_keys").get(0);
-        LinkedHashMap<String, String> values = read(columnName, key + "_values").get(0);
-
-        Map<String, String> headers = new HashMap<>();
-        for (String sKey : keys.keySet()) {
-            if (!sKey.contentEquals(columnName)) {
-                if (keys.get(sKey).contentEquals("")) {
-                    break;
-                }
-                if (!config.resolveString(values.get(sKey)).contentEquals("!IGNORE!"))
-                    headers.put(config.resolveString(keys.get(sKey)), config.resolveString(values.get(sKey)));
-            }
-        }
-        return headers;
-    }
-
-    public Map<String, String> get_as_query_params(String columnName, String key) {
-        return get_as_headers(columnName, key);
-    }
-
     /***
      * Reads the entire sheet data into a collection
      *
@@ -150,6 +128,7 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
      *         name and column value
      * @author vamsikrishna.kayyala
      */
+    @Override
     public List<LinkedHashMap<String, String>> read() {
         if (isDataSaved("TOTAL_DATA")) {
             return processData(getSavedData("TOTAL_DATA"));
@@ -168,104 +147,23 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
         }
     }
 
+    @Override
+    public String getWorkbookPath() {
+        return sWBPath;
+    }
+
+    @Override
+    public String getWorksheetPath() {
+        return sWSName;
+    }
+
+    @Override
+    public RunConfiguration getRunConfigurationObj() {
+        return config;
+    }
+
     public List<String[]> readAsList() {
         throw new RuntimeException("TO BE IMPLEMENTED FOR EXCEL, USE CSV FILE TO USE THIS METHOD");
-    }
-
-    /***
-     * Reads the sheet data into a collection based on filter provided
-     *
-     * @param mFilters - map containing column name and values, used for filtering
-     *                 Excel sheet to read data
-     * @return collection of rows where each row is represented as a map of column
-     *         name and column value
-     * @author vamsikrishna.kayyala
-     */
-    public List<LinkedHashMap<String, String>> read(Map<String, String> mFilters) {
-        return processData(filterData(read(), mFilters));
-    }
-
-    /***
-     * Reads the sheet data into a collection based on filter provided
-     *
-     * @param arFilters - array containing column name and values separated by ==, used for filtering
-     *                 Excel sheet to read data
-     * @return collection of rows where each row is represented as a map of column
-     *         name and column value
-     * @author vamsikrishna.kayyala
-     */
-    public List<LinkedHashMap<String, String>> read(String[] arFilters) {
-        return processData(filterData(read(), arFilters));
-    }
-
-    /***
-     * Reads the sheet data into a collection based on filter provided
-     *
-     * @param sColumn - Column name to put a filter on
-     * @param sValue  - Filter value
-     * @return collection of rows where each row is represented as a map of column
-     *         name and column value
-     * @author vamsikrishna.kayyala
-     */
-    public List<LinkedHashMap<String, String>> read(String sColumn, String sValue) {
-        return processData(filterData(read(), sColumn, sValue));
-    }
-
-    public List<LinkedHashMap<String, String>> read(String sColumn, String sValue, String exclude_column, String exclude_value) {
-        var completeData = read(sColumn, sValue);
-        Predicate<LinkedHashMap<String, String>> filterCondition =
-                map -> map.containsKey(exclude_column) && !map.get(exclude_column).equals(exclude_value);
-        return processData(filterData(completeData, filterCondition));
-    }
-
-    /***
-     * Reads a single column values with no duplicates
-     *
-     * @param column - column name to read from
-     * @return returns the list of unique column values with key as column name
-     * @author vamsikrishna.kayyala
-     */
-    public List<LinkedHashMap<String, String>> readUniqueColumnValues(String column) {
-        var results = read();
-        var uniqueData = getUniqueColumnValues(column, results);
-        return processData(uniqueData);
-    }
-
-    public LinkedHashMap<String, String> readRandomRow(String column, String value) {
-        var row = readRandomRow(read(column, value));
-        if (row.isEmpty()) {
-            throw new RuntimeException("Looks like there are no matching rows for column " +
-                    "" + column + " and value " + value + " in " + sWBPath);
-        } else {
-            return row.get();
-        }
-    }
-
-    public LinkedHashMap<String, String> readRandomRow(String column, String value, String exclude_column, String exclude_value) {
-        var row = readRandomRow(read(column, value, exclude_column, exclude_value));
-        if (row.isEmpty()) {
-            throw new RuntimeException("Looks like there are no matching rows for column " +
-                    "" + column + " and value " + value + " in " + sWBPath);
-        } else {
-            return row.get();
-        }
-    }
-
-    /***
-     * Reads a single column values with no duplicates
-     *
-     * @param filterColumn - column to put filter
-     * @param filterValue - Value to use for the filter
-     * @param column - column name to read unique values from
-     * @return returns the list of unique column values with key as column name
-     * @author vamsikrishna.kayyala
-     */
-    public List<LinkedHashMap<String, String>> readUniqueColumnValues(String filterColumn,
-                                                                      String filterValue,
-                                                                      String column) {
-        var results = read(filterColumn, filterValue);
-        var uniqueData = getUniqueColumnValues(column, results);
-        return processData(uniqueData);
     }
 
     private boolean HasNext() {
@@ -400,7 +298,7 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
         } catch (Exception e) {
             e.printStackTrace();
         }
-        var excels = DataParsers();
+        var excels = BaseDataParser.DataParsers();
         excels.remove(sWBPath + sWSName);
         staticDataParsers.set(excels);
     }
@@ -436,15 +334,4 @@ public class ExcelParser extends BaseDataParser<ExcelParser> implements DataPars
             e.printStackTrace();
         }
     }
-
-    public boolean checkForFilters(Map<String, String> mFilters) {
-        Set<String> keySet = mFilters.keySet();
-        for (String key : keySet) {
-            if (!getValue(key).contentEquals(mFilters.get(key))) {
-                return false;
-            }
-        }
-        return true;
-    }
-
 }
