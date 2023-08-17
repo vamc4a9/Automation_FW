@@ -1,26 +1,30 @@
 package com.qa.core.dataHandler;
 
+import com.opencsv.CSVReader;
+import com.opencsv.CSVReaderBuilder;
 import com.qa.core.context.RunConfiguration;
 import com.qa.core.dataLib.DataProcessor;
 import com.qa.core.util.BeanUtil;
-import com.opencsv.CSVReader;
-import com.opencsv.CSVReaderBuilder;
 import org.apache.commons.io.FileUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.context.annotation.Scope;
 import org.springframework.stereotype.Component;
 
-import java.io.*;
+import java.io.File;
+import java.io.FileReader;
+import java.io.InputStreamReader;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.charset.Charset;
-import java.util.*;
-import java.util.function.Predicate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Component
 @Lazy
 @Scope("prototype")
-public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
+public class CsvParser extends BaseDataParserImpl<CsvParser> implements DataParser {
 
     public List<String> headers;
     private List<LinkedHashMap<String, String>> data;
@@ -38,8 +42,8 @@ public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
     }
 
     public synchronized CsvParser getInstance(URL url) {
-        if (DataParsers().containsKey(url.toString())) {
-            return (CsvParser) DataParsers().get(url.toString());
+        if (BaseDataParser.DataParsers().containsKey(url.toString())) {
+            return (CsvParser) BaseDataParser.DataParsers().get(url.toString());
         } else {
             var csv = getNewInstance();
             csv.sWBPath = url.toString();
@@ -54,14 +58,14 @@ public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
             } catch (Exception e) {
                 throw new RuntimeException("Unable to read the csv file: " + sWBPath, e);
             }
-            storeDataParser(url.toString(), csv);
+            BaseDataParser.storeDataParser(url.toString(), csv);
             return csv;
         }
     }
 
     public synchronized CsvParser getInstance(String filePath, String sheetName) {
-        if (DataParsers().containsKey(filePath + sheetName)) {
-            return (CsvParser) DataParsers().get(filePath + sheetName);
+        if (BaseDataParser.DataParsers().containsKey(filePath + sheetName)) {
+            return (CsvParser) BaseDataParser.DataParsers().get(filePath + sheetName);
         } else {
             var csv = getNewInstance();
             csv.sWBPath = filePath;
@@ -74,12 +78,12 @@ public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
             } catch (Exception e) {
                 throw new RuntimeException("Unable to read the csv file: " + filePath, e);
             }
-            storeDataParser(filePath + sheetName, csv);
+            BaseDataParser.storeDataParser(filePath + sheetName, csv);
             return csv;
         }
     }
 
-    private static void readCsv(CsvParser csv, CSVReader csvReader) throws Exception {
+    private static synchronized void readCsv(CsvParser csv, CSVReader csvReader) throws Exception {
         int i = 0;
         var allLines = csvReader.readAll();
         for(String[] line : allLines) {
@@ -114,28 +118,6 @@ public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
     }
 
     @Override
-    public Map<String, String> get_as_headers(String columnName, String key) {
-        LinkedHashMap<String, String> keys = read(columnName, key + "_keys").get(0);
-        LinkedHashMap<String, String> values = read(columnName, key + "_values").get(0);
-        Map<String, String> headers = new HashMap<>();
-        for (String sKey : keys.keySet()) {
-            if (!sKey.contentEquals(columnName)) {
-                if (keys.get(sKey).contentEquals("")) {
-                    break;
-                }
-                if (!config.resolveString(values.get(sKey)).contentEquals("!IGNORE!"))
-                    headers.put(config.resolveString(keys.get(sKey)), config.resolveString(values.get(sKey)));
-            }
-        }
-        return headers;
-    }
-
-    @Override
-    public Map<String, String> get_as_query_params(String columnName, String key) {
-        return get_as_headers(columnName, key);
-    }
-
-    @Override
     public List<String[]> readAsList() {
         return allLines;
     }
@@ -146,62 +128,18 @@ public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
     }
 
     @Override
-    public List<LinkedHashMap<String, String>> read(Map<String, String> mFilters) {
-        return processData(filterData(data, mFilters));
+    public String getWorkbookPath() {
+        return sWBPath;
     }
 
     @Override
-    public List<LinkedHashMap<String, String>> read(String[] arFilters) {
-        return processData(filterData(data, arFilters));
+    public String getWorksheetPath() {
+        return sWSName;
     }
 
     @Override
-    public List<LinkedHashMap<String, String>> read(String sColumn, String sValue) {
-        return processData(filterData(data, sColumn, sValue));
-    }
-
-    @Override
-    public List<LinkedHashMap<String, String>> read(String sColumn, String sValue, String exclude_column, String exclude_value) {
-        var completeData = read(sColumn, sValue);
-        Predicate<LinkedHashMap<String, String>> filterCondition =
-                map -> map.containsKey(exclude_column) && !map.get(exclude_column).equals(exclude_value);
-        return processData(filterData(completeData, filterCondition));
-    }
-
-    @Override
-    public LinkedHashMap<String, String> readRandomRow(String column, String value, String exclude_column, String exclude_value) {
-        var row = readRandomRow(read(column, value, exclude_column, exclude_value));
-        if (row.isEmpty()) {
-            throw new RuntimeException("Looks like there are no matching rows for column " +
-                    "" + column + " and value " + value + " in " + sWBPath);
-        } else {
-            return row.get();
-        }
-    }
-
-    @Override
-    public List<LinkedHashMap<String, String>> readUniqueColumnValues(String column) {
-        var results = read();
-        var uniqueData = getUniqueColumnValues(column, results);
-        return processData(uniqueData);
-    }
-
-    @Override
-    public LinkedHashMap<String, String> readRandomRow(String column, String value) {
-        var row = readRandomRow(read(column, value));
-        if (row.isEmpty()) {
-            throw new RuntimeException("Looks like there are no matching rows for column " +
-                    "" + column + " and value " + value + " in " + sWBPath);
-        } else {
-            return row.get();
-        }
-    }
-
-    @Override
-    public List<LinkedHashMap<String, String>> readUniqueColumnValues(String filterColumn, String filterValue, String column) {
-        var results = read(filterColumn, filterValue);
-        var uniqueData = getUniqueColumnValues(column, results);
-        return processData(uniqueData);
+    public RunConfiguration getRunConfigurationObj() {
+        return config;
     }
 
     @Override
@@ -296,11 +234,6 @@ public class CsvParser extends BaseDataParser<CsvParser> implements DataParser {
             throw new RuntimeException("Error occurred while writing " +
                     data + " to a csv file named " + sWBPath);
         }
-    }
-
-    @Override
-    public boolean checkForFilters(Map<String, String> mFilters) {
-        return false;
     }
 
     private void readCSVFile() {
